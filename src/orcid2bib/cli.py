@@ -37,6 +37,13 @@ def build_parser():
         ),
     )
     parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print diagnostic details per work: detected entry type, DOI found, "
+             "DOI-lookup requests/responses, and why fields were or weren't overridden.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="%(prog)s 0.2.0",
@@ -53,6 +60,7 @@ def main(argv=None):
         output_filename=args.output,
         delay=args.delay,
         doi_lookup=not args.no_doi_lookup,
+        verbose=args.verbose,
     )
     if result is None:
         sys.exit(1)

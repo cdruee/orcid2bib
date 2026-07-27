@@ -32,7 +32,7 @@ orcid2bib 0000-0002-0103-4275
 Options:
 
 ```
-usage: orcid2bib [-h] [-o FILE] [--delay SECONDS] [-n] [--version] orcid_id
+usage: orcid2bib [-h] [-o FILE] [--delay SECONDS] [-n] [-v] [--version] orcid_id
 
 positional arguments:
   orcid_id              ORCID iD of the profile to fetch, e.g. 0000-0002-0103-4275
@@ -45,6 +45,9 @@ options:
   -n, --no-doi-lookup    Disable resolving each work's DOI for extra metadata (author,
                           journal, year, volume, number, pages, keywords). By default,
                           DOI-resolved data overrides ORCID's own fields where available.
+  -v, --verbose          Print diagnostic details per work: detected entry type, DOI
+                          found, DOI-lookup requests/responses, and why fields were or
+                          weren't overridden.
   --version              show program's version number and exit
 ```
 
@@ -58,6 +61,12 @@ Example skipping DOI lookups (ORCID data only, faster, no extra network calls):
 
 ```bash
 orcid2bib 0000-0002-0103-4275 -n
+```
+
+Example diagnosing why DOI enrichment isn't showing up:
+
+```bash
+orcid2bib 0000-0002-0103-4275 -v
 ```
 
 ## As a library

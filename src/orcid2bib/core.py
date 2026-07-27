@@ -1,3 +1,4 @@
+import re
 import time
 
 import requests
@@ -46,6 +47,11 @@ def _clean(value):
     return " ".join(str(value).split())
 
 
+def _vprint(verbose, msg):
+    if verbose:
+        print(f"    [v] {msg}")
+
+
 def get_orcid_works(orcid_id):
     """Fetches the list of all public works summaries from an ORCID profile."""
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
@@ -75,7 +81,7 @@ def get_orcid_works(orcid_id):
     return put_codes
 
 
-def get_doi_metadata(doi_string):
+def get_doi_metadata(doi_string, verbose=False):
     """Fetches CSL-JSON metadata for a DOI (via doi.org content negotiation).
 
     Used to enrich/override author, journal, year, volume, number, pages,
@@ -91,13 +97,23 @@ def get_doi_metadata(doi_string):
     url = f"https://doi.org/{doi}"
     headers = {"Accept": "application/vnd.citationstyles.csl+json"}
 
+    _vprint(verbose, f"Resolving DOI {doi} via {url}")
     try:
         response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-    return None
+    except Exception as exc:
+        _vprint(verbose, f"DOI lookup failed: {exc!r}")
+        return None
+
+    _vprint(verbose, f"DOI lookup response: {response.status_code} {response.headers.get('Content-Type', '')}")
+    if response.status_code != 200:
+        _vprint(verbose, f"DOI lookup body (truncated): {response.text[:300]!r}")
+        return None
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        _vprint(verbose, f"DOI response was not valid JSON ({exc!r}); got: {response.text[:300]!r}")
+        return None
 
 
 def _extract_doi(work_data):
@@ -110,7 +126,98 @@ def _extract_doi(work_data):
     return None
 
 
-def _extract_orcid_authors(work_data):
+_NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
+_NAME_PARTICLES = {
+    "van", "von", "der", "den", "de", "la", "le", "di", "da",
+    "do", "dos", "du", "al", "el", "bin", "ibn", "st", "st.",
+}
+
+
+def _normalize_name(name):
+    """Normalizes a single-string full name into BibTeX's 'Family, Given' form.
+
+    Handles names already given as "Family, Given" (just tidies spacing),
+    trailing generational suffixes (Jr., III, ...), and lowercase name
+    particles (van, von, de, ...) that belong with the family name.
+    This is a heuristic -- name splitting is inherently ambiguous -- so it
+    won't be perfect for every name, but covers the common cases.
+    """
+    name = _clean(name)
+    if not name:
+        return ""
+
+    if "," in name:
+        # Already looks like "Family, Given" (or "Family, Suffix, Given") -- just tidy it.
+        parts = [p.strip() for p in name.split(",")]
+        return ", ".join(p for p in parts if p)
+
+    tokens = name.split(" ")
+    if len(tokens) == 1:
+        return tokens[0]
+
+    suffix = None
+    if tokens[-1].lower().rstrip(".") in {s.rstrip(".") for s in _NAME_SUFFIXES}:
+        if len(tokens) > 2:
+            suffix = tokens.pop()
+
+    # Merge trailing lowercase particle words ("van der Berg") into the family name.
+    split_idx = len(tokens) - 1
+    while split_idx > 0 and tokens[split_idx - 1].lower() in _NAME_PARTICLES:
+        split_idx -= 1
+
+    given = " ".join(tokens[:split_idx])
+    family = " ".join(tokens[split_idx:])
+
+    if suffix:
+        return f"{family}, {suffix}, {given}"
+    return f"{family}, {given}"
+
+
+def _split_combined_credit_name(name, verbose=False):
+    """Detects a known ORCID data-quality issue: a single contributor's
+    'credit-name' field actually contains an entire citation-style author
+    list crammed together, e.g.:
+
+        "Kahlenborn, W., Porst, L., Voss, M., ..., and Schauser, I."
+
+    instead of just that one contributor's name. If the string looks like
+    an even number of alternating "Family, Given" pairs joined by commas
+    (with "and" before the last one or two), split it into individual
+    normalized names. Returns a list of names, or None if this doesn't look
+    like a combined multi-author string (i.e. it's a normal single name).
+    """
+    if " and " not in f" {name.lower()} ":
+        return None
+
+    tokens = [t.strip() for t in name.split(",")]
+    tokens = [t for t in tokens if t]
+
+    # A single name with a suffix ("Smith, Jr., John") also has 3 comma
+    # tokens but no "and" -- already excluded above. Anything with "and"
+    # AND an even token count >= 4 is very likely a concatenated list
+    # of "Family, Given" pairs rather than one person's name.
+    if len(tokens) < 4 or len(tokens) % 2 != 0:
+        return None
+
+    pairs = []
+    for i in range(0, len(tokens), 2):
+        family = re.sub(r"^and\s+", "", tokens[i], flags=re.IGNORECASE).strip()
+        given = re.sub(r"^and\s+", "", tokens[i + 1], flags=re.IGNORECASE).strip()
+        if not family or not given:
+            return None
+        # Real "Family, Given" citation-list entries are short (a surname, an
+        # initial or short first name). If any piece runs long, this is more
+        # likely a single name with an "and" caught up in it by coincidence
+        # than a genuine concatenated author list -- bail out to be safe.
+        if len(family.split()) > 3 or len(given.split()) > 3:
+            return None
+        pairs.append(f"{family}, {given}")
+
+    _vprint(verbose, f"credit-name looks like {len(pairs)} concatenated authors, not one -- splitting it")
+    return pairs
+
+
+def _extract_orcid_authors(work_data, verbose=False):
     """Builds a BibTeX 'and'-joined author string from ORCID contributor info."""
     contributors = (work_data.get("contributors") or {}).get("contributor") or []
     names = []
@@ -121,8 +228,14 @@ def _extract_orcid_authors(work_data):
         if role and role != "author":
             continue
         credit_name = (contributor.get("credit-name") or {}).get("value")
-        if credit_name:
-            names.append(_clean(credit_name))
+        if not credit_name:
+            continue
+
+        combined = _split_combined_credit_name(credit_name, verbose=verbose)
+        if combined:
+            names.extend(_normalize_name(n) for n in combined)
+        else:
+            names.append(_normalize_name(credit_name))
     return " and ".join(names)
 
 
@@ -141,7 +254,7 @@ def _format_csl_authors(csl_authors):
         elif given:
             names.append(given)
         elif author.get("literal"):
-            names.append(_clean(author["literal"]))
+            names.append(_normalize_name(author["literal"]))
     return " and ".join(names)
 
 
@@ -168,7 +281,7 @@ def _guess_entry_type(work_data):
     return _BIBTEX_TYPE_MAP.get(work_type, "misc")
 
 
-def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True):
+def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True, verbose=False):
     """Builds a BibTeX entry from an ORCID work record, optionally enriched via DOI lookup."""
     title_block = work_data.get("title") or {}
     inner_title = title_block.get("title") or {}
@@ -176,15 +289,25 @@ def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True):
 
     doi = _extract_doi(work_data)
     entry_type = _guess_entry_type(work_data)
+    _vprint(verbose, f"Work type '{work_data.get('type')}' -> entry type '@{entry_type}'")
+    _vprint(verbose, f"DOI found on record: {doi!r}")
 
-    authors = _extract_orcid_authors(work_data)
+    authors = _extract_orcid_authors(work_data, verbose=verbose)
     journal = _clean((work_data.get("journal-title") or {}).get("value"))
     year = _extract_orcid_year(work_data)
     volume = number = pages = keywords = ""
 
+    if not doi:
+        _vprint(verbose, "No DOI on this work -- skipping DOI lookup, using ORCID data only.")
+    elif not use_doi_lookup:
+        _vprint(verbose, "DOI lookup disabled (--no-doi-lookup) -- using ORCID data only.")
+
     if doi and use_doi_lookup:
-        meta = get_doi_metadata(doi)
+        meta = get_doi_metadata(doi, verbose=verbose)
+        if not meta:
+            _vprint(verbose, "DOI lookup returned no usable metadata -- keeping ORCID-sourced fields.")
         if meta:
+            _vprint(verbose, "DOI metadata retrieved -- overriding fields where present.")
             # DOI-resolved metadata overrides ORCID's own info where available.
             csl_authors = _format_csl_authors(meta.get("author"))
             if csl_authors:
@@ -238,20 +361,23 @@ def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True):
     return f"@{entry_type}{{{key},\n{body}\n}}"
 
 
-def fetch_work_details(orcid_id, put_code, use_doi_lookup=True):
+def fetch_work_details(orcid_id, put_code, use_doi_lookup=True, verbose=False):
     """Fetches full details for a single work and builds a BibTeX entry for it."""
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/work/{put_code}"
     headers = {"Accept": "application/json"}
 
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
+        _vprint(verbose, f"Failed to fetch work {put_code} (status {response.status_code})")
         return None
 
     work_data = response.json()
-    return build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=use_doi_lookup)
+    return build_bibtex_entry(
+        orcid_id, put_code, work_data, use_doi_lookup=use_doi_lookup, verbose=verbose
+    )
 
 
-def run(orcid_id, output_filename=None, delay=0.2, doi_lookup=True):
+def run(orcid_id, output_filename=None, delay=0.2, doi_lookup=True, verbose=False):
     """Fetches all public works for an ORCID iD and writes a compiled BibTeX file.
 
     Returns the output filename on success, or None if there was nothing to write.
@@ -269,7 +395,7 @@ def run(orcid_id, output_filename=None, delay=0.2, doi_lookup=True):
     for idx, code in enumerate(put_codes, 1):
         print(
             f"[*] Processing item {idx}/{len(put_codes)} (Put-code: {code})...")
-        bib_entry = fetch_work_details(orcid_id, code, use_doi_lookup=doi_lookup)
+        bib_entry = fetch_work_details(orcid_id, code, use_doi_lookup=doi_lookup, verbose=verbose)
         if bib_entry:
             compiled_bibtex.append(bib_entry)
         # Polite API delay to respect rate limits
