@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orcid2bib"
+version = "0.2.0"
+description = "Fetch all public works from an ORCID profile and compile them into a BibTeX file."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "Your Name" },
+]
+keywords = ["orcid", "bibtex", "bibliography", "citations", "research"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+]
+dependencies = [
+    "requests>=2.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.0",
+]
+
+[project.scripts]
+orcid2bib = "orcid2bib.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/orcid2bib"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orcid2bib"]
