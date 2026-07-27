@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Clemens Drüe <druee@uni-trier.de>
+# SPDX-License-Identifier: EUPL-1.2
+# Licensed under the EUPL
+
 """orcid2bib: fetch public works from an ORCID profile and compile them to BibTeX."""
 
 from .core import (

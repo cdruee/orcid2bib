@@ -1,6 +1,11 @@
 # orcid2bib
 
+[![License: EUPL-1.2](https://img.shields.io/badge/License-EUPL--1.2-blue.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-cdruee%2Forcid2bib-181717?logo=github)](https://github.com/cdruee/orcid2bib)
+
 Fetch all public works from an ORCID profile and compile them into a single BibTeX (`.bib`) file.
+
+Repository: [github.com/cdruee/orcid2bib](https://github.com/cdruee/orcid2bib)
 
 For each work, `orcid2bib` builds a BibTeX entry from the ORCID record:
 
@@ -17,11 +22,21 @@ For each work, `orcid2bib` builds a BibTeX entry from the ORCID record:
 
 ## Install
 
+Clone the repository and install it (editable install is recommended during development):
+
 ```bash
+git clone https://github.com/cdruee/orcid2bib.git
+cd orcid2bib
 pip install -e .
 ```
 
 (or `pip install -e ".[dev]"` to include test dependencies)
+
+You can also install directly from GitHub without cloning first:
+
+```bash
+pip install "git+https://github.com/cdruee/orcid2bib.git"
+```
 
 ## Usage
 
@@ -76,3 +91,23 @@ from orcid2bib import run
 
 run("0000-0002-0103-4275", output_filename="my_publications.bib")
 ```
+
+## Contributing
+
+Bug reports and pull requests are welcome at
+[github.com/cdruee/orcid2bib/issues](https://github.com/cdruee/orcid2bib/issues).
+
+## License
+
+Copyright (C) 2026 Clemens Drüe <druee@uni-trier.de>
+
+Licensed under the **EUPL-1.2** (European Union Public Licence, version 1.2). See [LICENSE](LICENSE)
+for the full text.
+
+## Author
+
+Clemens Drüe (druee@uni-trier.de)
+
+## Acknowledgments
+
+Developed with the assistance of Claude Sonnet 5 (Anthropic).

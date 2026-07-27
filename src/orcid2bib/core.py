@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Clemens Drüe <druee@uni-trier.de>
+# SPDX-License-Identifier: EUPL-1.2
+# Licensed under the EUPL
+
 import re
 import time
 
