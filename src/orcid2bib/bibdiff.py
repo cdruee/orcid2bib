@@ -20,6 +20,7 @@ as blank instead of listing it separately).
 import argparse
 import sys
 
+from ._color import paint
 from ._compare import diff_entry_fields
 from ._matching import (
     MATCH_THRESHOLD,
@@ -110,6 +111,17 @@ def build_parser():
              "for every match, possible match, and duplicate pair found",
     )
     parser.add_argument(
+        "--color",
+        nargs="?",
+        const="always",
+        default="never",
+        choices=["always", "never", "auto"],
+        metavar="WHEN",
+        help="Colorize output (green=added, red=removed), as diff(1) does. "
+             "WHEN is 'always', 'never' (default), or 'auto' (color only when "
+             "writing to a terminal). Bare --color means 'always'.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="%(prog)s 0.2.0",
@@ -123,6 +135,14 @@ def _resolve_style(args):
     if args.context:
         return "context"
     return "diff"
+
+
+def _resolve_color(args, stream):
+    if args.color == "always":
+        return True
+    if args.color == "never":
+        return False
+    return hasattr(stream, "isatty") and stream.isatty()  # auto
 
 
 def _vprint(verbose, msg, stream):
@@ -172,27 +192,30 @@ def _print_pair(entry_a, entry_b, result, label_a, label_b, args, stream):
     if status == "identical" and not args.report_identical:
         return False, differs
 
+    color = args.color_enabled
+
     if args.brief:
         if status == "differ":
-            print(f"{key_a} {key_b} differ", file=stream)
+            print(paint(f"{key_a} {key_b} differ", "red", color), file=stream)
         elif status == "renamed":
-            print(f"{key_a} {key_b} renamed", file=stream)
+            print(paint(f"{key_a} {key_b} renamed", "yellow", color), file=stream)
         else:
-            print(f"{key_a} {key_b} are identical", file=stream)
+            print(paint(f"{key_a} {key_b} are identical", "green", color), file=stream)
         return True, differs
 
     score_note = f"(score={result.total:.2f}, via {result.tier})" if result is not None else "(no entry on the other side)"
-    print(f"\n--- {label_a}  <->  {label_b}  {score_note} ---", file=stream)
+    print(paint(f"\n--- {label_a}  <->  {label_b}  {score_note} ---", "bold", color), file=stream)
     if args.debug and result is not None:
         parts = ", ".join(f"{name}={score:.2f}(w={weight:.2f})" for name, (score, weight) in result.breakdown.items())
         print(f"    [d] breakdown: {parts or '(identifier match, no component breakdown)'}", file=stream)
 
     if status != "differ":
         note = "entries are identical" if status == "identical" else "citation key differs; all fields identical"
-        print(f"  ({note})", file=stream)
+        note_color = "green" if status == "identical" else "yellow"
+        print(paint(f"  ({note})", note_color, color), file=stream)
         return True, differs
 
-    print(render_diff(label_a, entry_a, label_b, entry_b, style=args.style), file=stream)
+    print(render_diff(label_a, entry_a, label_b, entry_b, style=args.style, color=color), file=stream)
     return True, differs
 
 
@@ -206,14 +229,16 @@ def _report_duplicates(filename, entries, groups, stream):
         print(f"  {', '.join(keys)}", file=stream)
 
 
-def _report_unmatched(filename, entries, indices, args, stream):
+def _report_unmatched(filename, entries, indices, args, stream, side, color=False):
+    line_color = "red" if side == "a" else "green"
     for i in indices:
         entry = entries[i]
         key = entry.get("ID", "?")
         if args.brief:
-            print(f"Only in {filename}: {key}", file=stream)
+            print(paint(f"Only in {filename}: {key}", line_color, color), file=stream)
         else:
-            print(f"  {key}: {entry.get('title', '')}", file=stream)
+            line = f"only in {filename}: {key} ({entry.get('title', '')})"
+            print(paint(line, line_color, color), file=stream)
 
 
 def main(argv=None):
@@ -222,6 +247,7 @@ def main(argv=None):
     args.style = _resolve_style(args)
 
     stream = open(args.output, "w", encoding="utf-8") if args.output else sys.stdout
+    args.color_enabled = _resolve_color(args, stream)
     any_diff = False
     try:
         try:
@@ -289,10 +315,10 @@ def main(argv=None):
         else:
             if args.verbose:
                 print(f"\n=== Only in {args.first} ({len(unmatched_a)}) ===", file=stream)
-            _report_unmatched(args.first, entries_a, unmatched_a, args, stream)
+            _report_unmatched(args.first, entries_a, unmatched_a, args, stream, side="a", color=args.color_enabled)
             if args.verbose:
                 print(f"\n=== Only in {args.second} ({len(unmatched_b)}) ===", file=stream)
-            _report_unmatched(args.second, entries_b, unmatched_b, args, stream)
+            _report_unmatched(args.second, entries_b, unmatched_b, args, stream, side="b", color=args.color_enabled)
 
         if args.verbose:
             dup_count_a = sum(len(g) for g in dups_a)

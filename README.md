@@ -102,6 +102,10 @@ diff for each matched pair.
 bibdiff mylibrary.bib exported_from_zotero.bib
 ```
 
+It follows classic `diff(1)` conventions: normal output is *just the differences* — no section
+headers, no duplicate listing, no summary. Add `-v`/`--verbose` for all of that plus progress
+details.
+
 **How matching works**, in order of confidence:
 
 1. Identical citation key.
@@ -111,14 +115,14 @@ bibdiff mylibrary.bib exported_from_zotero.bib
    (`J. Smith` vs `John Smith`) and abbreviated venue names (`J. Am. Chem. Soc.` vs `Journal of
    the American Chemical Society`).
 
-The same scoring is used to detect probable duplicates *within* a single file.
+The same scoring is used to detect probable duplicates *within* a single file (shown with `-v`).
 
 Options:
 
 ```
-usage: bibdiff [-h] [--style {diff,context,side-by-side}]
-               [--match-threshold SCORE] [--possible-threshold SCORE]
-               [-o FILE] [-v] [-d] [--version]
+usage: bibdiff [-h] [-c | -y] [-q] [-s] [-N] [--match-threshold SCORE]
+               [--possible-threshold SCORE] [-o FILE] [-v] [-d]
+               [--color [WHEN]] [--version]
                first second
 
 positional arguments:
@@ -127,34 +131,64 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  --style {diff,context,side-by-side}
-                        Output style for field-level differences (default: diff)
+  -c, --context         Show field differences in context-diff style (default:
+                        unified diff)
+  -y, --side-by-side    Show field differences side by side (default: unified
+                        diff)
+  -q, --brief           Report only whether entries differ, one line per pair:
+                        "KEY1 KEY2 differ", or "KEY1 KEY2 renamed" if only the
+                        citation key differs. With -s, also reports "KEY1 KEY2
+                        are identical".
+  -s, --report-identical-files
+                        Also report matched pairs with no differences at all
+                        (same citation key, all fields identical). Omitted by
+                        default.
+  -N, --new-file        Treat an entry missing on one side as blank there and
+                        diff it against the blank, instead of listing it under
+                        'only in ...'.
   --match-threshold SCORE
-                        Minimum score (0-1) to treat two entries as a confirmed match
-                        (default: 0.75)
+                        Minimum score (0-1) to treat two entries as a
+                        confirmed match (default: 0.75)
   --possible-threshold SCORE
-                        Minimum score (0-1) to flag two entries as a possible match
-                        needing review (default: 0.55)
+                        Minimum score (0-1) to flag two entries as a possible
+                        match needing review (default: 0.55)
   -o FILE, --output FILE
                         Write the report to a file instead of stdout
-  -v, --verbose         Print progress details (files parsed, entry counts, matching
-                        progress)
-  -d, --debug           Also print the score breakdown (per-component scores and
-                        weights) for every match, possible match, and duplicate pair
-                        found
+  -v, --verbose         Also print progress details, possible-duplicate
+                        listings, section headers/counts, and a final summary.
+                        Normal output has none of these.
+  -d, --debug           Also print the score breakdown (per-component scores
+                        and weights) for every match, possible match, and
+                        duplicate pair found
+  --color [WHEN]        Colorize output (green=added, red=removed), as diff(1)
+                        does. WHEN is 'always', 'never' (default), or 'auto'
+                        (color only when writing to a terminal). Bare --color
+                        means 'always'.
   --version             show program's version number and exit
 ```
 
-Example with a side-by-side field comparison:
+Entries found only in one file are reported as `only in FILE: KEY (Title)`, so it's always clear
+which side an entry belongs to.
+
+The process exits `0` if the two files are equivalent, `1` if any differences were found (mirroring
+`diff`'s exit codes), and `2` on a syntax/parse error.
+
+Example with a side-by-side field comparison and color:
 
 ```bash
-bibdiff mylibrary.bib exported_from_zotero.bib --style side-by-side
+bibdiff mylibrary.bib exported_from_zotero.bib -y --color=auto
+```
+
+Example: a quick one-line-per-entry summary of what changed:
+
+```bash
+bibdiff mylibrary.bib exported_from_zotero.bib -q
 ```
 
 Example seeing exactly how each score was computed:
 
 ```bash
-bibdiff mylibrary.bib exported_from_zotero.bib -d
+bibdiff mylibrary.bib exported_from_zotero.bib -v -d
 ```
 
 ## Contributing
