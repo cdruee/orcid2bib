@@ -1,0 +1,84 @@
+# Creates a GitHub Release for a commit once:
+#   a) the "Python package" workflow (python-package.yml) has completed
+#      successfully on it, and
+#   b) the commit is tagged vX.Y.Z (strictly numeric, e.g. v1.2.3 -- no
+#      "v1.2.3-rc1", no "v1.2.3.post1", no leading garbage).
+#
+# Publishing the Release here is what then triggers release.yml (which
+# builds and uploads to PyPI), since that workflow listens for
+# `release: published`.
+#
+# IMPORTANT: creating the release with the default GITHUB_TOKEN would NOT
+# trigger release.yml -- GitHub suppresses any workflow run that would be
+# caused by an action taken with the default token, to prevent runaway
+# recursion. So this step authenticates with a personal access token
+# instead (see setup note at the bottom of this file).
+
+name: Tag release
+
+on:
+  workflow_run:
+    workflows: ["Python package"]
+    types: [completed]
+
+jobs:
+  create-release:
+    # Only act on a successful run that was itself triggered by a push
+    # (not by a pull_request build) -- tags are only meaningful on commits
+    # that have actually landed.
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Look for a vX.Y.Z tag on this commit
+        id: tag
+        run: |
+          # Strictly vN.N.N -- no suffixes like -rc1, +build, .post1, etc.
+          tag=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          if [ -z "$tag" ]; then
+            echo "No matching vX.Y.Z tag on this commit -- nothing to release."
+            echo "match=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Found release tag: $tag"
+            echo "match=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.tag.outputs.match == 'true'
+        env:
+          # A personal access token stored as a repo secret -- see the
+          # setup note below. Using this instead of GITHUB_TOKEN is what
+          # allows the release to trigger release.yml.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ steps.tag.outputs.tag }}" \
+            --generate-notes
+
+# --- One-time setup ---------------------------------------------------
+# This workflow needs a token that is NOT the default GITHUB_TOKEN:
+#
+#   1. Create a fine-grained personal access token
+#      (https://github.com/settings/tokens?type=beta) scoped to just this
+#      repository, with "Contents: Read and write" permission (that's
+#      enough to create releases/tags). A classic PAT with the "repo"
+#      scope also works, but is broader than necessary.
+#      (Using a bot/machine account rather than your own account avoids
+#      the token being tied to your personal GitHub identity.)
+#   2. Add it as a repository secret named RELEASE_PAT:
+#      Settings -> Secrets and variables -> Actions -> New repository secret.
+#
+# Alternative (more setup, more robust long-term): register a small
+# GitHub App for this repo and mint a short-lived installation token in
+# the workflow with actions/create-github-app-token, instead of a
+# long-lived PAT.
