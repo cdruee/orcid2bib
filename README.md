@@ -122,7 +122,7 @@ Options:
 ```
 usage: bibdiff [-h] [-c | -y] [-q] [-s] [-N] [--match-threshold SCORE]
                [--possible-threshold SCORE] [-o FILE] [-v] [-d]
-               [--color [WHEN]] [--version]
+               [--color] [--version]
                first second
 
 positional arguments:
@@ -160,10 +160,8 @@ options:
   -d, --debug           Also print the score breakdown (per-component scores
                         and weights) for every match, possible match, and
                         duplicate pair found
-  --color [WHEN]        Colorize output (green=added, red=removed), as diff(1)
-                        does. WHEN is 'always', 'never' (default), or 'auto'
-                        (color only when writing to a terminal). Bare --color
-                        means 'always'.
+  --color               Colorize output (green=added, red=removed) when
+                        writing to a terminal, as diff(1)'s --color=auto does.
   --version             show program's version number and exit
 ```
 
@@ -176,7 +174,7 @@ The process exits `0` if the two files are equivalent, `1` if any differences we
 Example with a side-by-side field comparison and color:
 
 ```bash
-bibdiff mylibrary.bib exported_from_zotero.bib -y --color=auto
+bibdiff mylibrary.bib exported_from_zotero.bib -y --color
 ```
 
 Example: a quick one-line-per-entry summary of what changed:

@@ -112,14 +112,9 @@ def build_parser():
     )
     parser.add_argument(
         "--color",
-        nargs="?",
-        const="always",
-        default="never",
-        choices=["always", "never", "auto"],
-        metavar="WHEN",
-        help="Colorize output (green=added, red=removed), as diff(1) does. "
-             "WHEN is 'always', 'never' (default), or 'auto' (color only when "
-             "writing to a terminal). Bare --color means 'always'.",
+        action="store_true",
+        help="Colorize output (green=added, red=removed) when writing to a "
+             "terminal, as diff(1)'s --color=auto does.",
     )
     parser.add_argument(
         "--version",
@@ -138,11 +133,10 @@ def _resolve_style(args):
 
 
 def _resolve_color(args, stream):
-    if args.color == "always":
-        return True
-    if args.color == "never":
+    """--color behaves like diff's --color=auto: on only when writing to a terminal."""
+    if not args.color:
         return False
-    return hasattr(stream, "isatty") and stream.isatty()  # auto
+    return hasattr(stream, "isatty") and stream.isatty()
 
 
 def _vprint(verbose, msg, stream):
