@@ -43,6 +43,62 @@ _VENUE_FIELD_BY_TYPE = {
     "incollection": "booktitle",
 }
 
+# Crossref/CSL "type" values, as returned by DOI content-negotiation
+# (https://api.crossref.org/types), mapped to BibTeX entry types. This is
+# generally *more* reliable than ORCID's own self-reported work "type",
+# which authors set by hand and often get wrong or inconsistent -- e.g.
+# tagging a Copernicus discussion-journal article (which Crossref
+# registers as a plain "journal-article") as a "preprint", or tagging a
+# conference paper as "other"/"journal-article".
+_CROSSREF_TYPE_MAP = {
+    "journal-article": "article",
+    "proceedings-article": "inproceedings",
+    "book-chapter": "incollection",
+    "book-section": "incollection",
+    "book-part": "incollection",
+    "book-track": "incollection",
+    "reference-entry": "incollection",
+    "book": "book",
+    "monograph": "book",
+    "edited-book": "book",
+    "reference-book": "book",
+    "report": "techreport",
+    "report-series": "techreport",
+    "standard": "techreport",
+    "dissertation": "phdthesis",
+}
+
+# Crossref's "posted-content" type covers preprints, working papers, and
+# similar things hosted on a repository rather than formally published.
+# It doesn't map cleanly onto a classic BibTeX type -- there's no fixed
+# venue, volume, or page range -- so "@misc" (no required fields) is a
+# much safer fit than "@unpublished" (which formally requires a "note"
+# field) or "@inproceedings" (which implies a real proceedings volume).
+_CROSSREF_POSTED_CONTENT_TYPE = "misc"
+
+# Safety net: some preprint/working-paper servers are registered with
+# DataCite rather than Crossref, or can otherwise come back from DOI
+# content negotiation tagged generically (e.g. "journal-article") even
+# though the container is clearly a preprint repository. If the resolved
+# container-title or publisher matches one of these, treat it as a
+# preprint regardless of what the "type" field says.
+_PREPRINT_SERVER_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\barxiv\b",
+        r"\bbiorxiv\b",
+        r"\bmedrxiv\b",
+        r"\bchemrxiv\b",
+        r"\begusphere\b",
+        r"\bessoar\b",
+        r"\bresearch\s*square\b",
+        r"\bssrn\b",
+        r"\bpreprints\.org\b",
+        r"\bauthorea\b",
+        r"\bpreprint\b",
+    )
+]
+
 
 def _clean(value):
     """Collapse whitespace/newlines so a field renders as a single BibTeX line."""
@@ -303,6 +359,59 @@ def _guess_entry_type(work_data):
     return _BIBTEX_TYPE_MAP.get(work_type, "misc")
 
 
+def _guess_entry_type_from_doi_meta(meta, verbose=False):
+    """Guesses a BibTeX entry type from DOI-resolved CSL-JSON metadata.
+
+    Uses the Crossref/CSL 'type' (and, for posted content, 'subtype')
+    field, which reflects how the work was actually registered, rather
+    than ORCID's self-reported work type. Returns None if the metadata
+    doesn't give a confident answer, so the caller can fall back to the
+    ORCID-based guess instead.
+    """
+    if not meta:
+        return None
+
+    csl_type = (meta.get("type") or "").lower()
+
+    if csl_type == "posted-content":
+        subtype = (meta.get("subtype") or "").lower()
+        _vprint(
+            verbose,
+            f"DOI type 'posted-content' (subtype '{subtype or '?'}') "
+            f"-> preprint -> '@{_CROSSREF_POSTED_CONTENT_TYPE}'",
+        )
+        return _CROSSREF_POSTED_CONTENT_TYPE
+
+    mapped = _CROSSREF_TYPE_MAP.get(csl_type)
+    if mapped:
+        _vprint(verbose, f"DOI type '{csl_type}' -> '@{mapped}'")
+        return mapped
+
+    # Safety net: container/publisher looks like a known preprint server,
+    # even though the 'type' field itself didn't say 'posted-content'.
+    container_title = meta.get("container-title")
+    if isinstance(container_title, list):
+        container_title = container_title[0] if container_title else None
+    publisher = meta.get("publisher")
+    haystack = " ".join(str(x) for x in (container_title, publisher) if x)
+    if haystack and any(p.search(haystack) for p in _PREPRINT_SERVER_PATTERNS):
+        _vprint(
+            verbose,
+            f"DOI type '{csl_type or '?'}' but container/publisher "
+            f"'{haystack}' looks like a preprint server -> "
+            f"'@{_CROSSREF_POSTED_CONTENT_TYPE}'",
+        )
+        return _CROSSREF_POSTED_CONTENT_TYPE
+
+    if csl_type:
+        _vprint(
+            verbose,
+            f"DOI type '{csl_type}' has no confident BibTeX mapping -- "
+            f"keeping ORCID-based guess",
+        )
+    return None
+
+
 def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True, verbose=False):
     """Builds a BibTeX entry from an ORCID work record, optionally enriched via DOI lookup."""
     title_block = work_data.get("title") or {}
@@ -330,6 +439,21 @@ def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True, verbo
             _vprint(verbose, "DOI lookup returned no usable metadata -- keeping ORCID-sourced fields.")
         if meta:
             _vprint(verbose, "DOI metadata retrieved -- overriding fields where present.")
+
+            # The DOI's own registered type is generally a more reliable
+            # signal for the BibTeX entry type than ORCID's self-reported
+            # work type (see _guess_entry_type_from_doi_meta docstring).
+            doi_entry_type = _guess_entry_type_from_doi_meta(meta, verbose=verbose)
+            if doi_entry_type and doi_entry_type != entry_type:
+                _vprint(
+                    verbose,
+                    f"Overriding entry type '@{entry_type}' (from ORCID) "
+                    f"with '@{doi_entry_type}' (from DOI)",
+                )
+                entry_type = doi_entry_type
+            elif doi_entry_type:
+                _vprint(verbose, f"DOI-derived entry type '@{doi_entry_type}' agrees with ORCID-based guess")
+
             # DOI-resolved metadata overrides ORCID's own info where available.
             csl_authors = _format_csl_authors(meta.get("author"))
             if csl_authors:
@@ -364,6 +488,10 @@ def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True, verbo
     fields.append(("title", title))
     if venue_field and journal:
         fields.append((venue_field, journal))
+    elif entry_type == "misc" and journal:
+        # @misc has no natural venue field, but the container/journal
+        # title (e.g. "EGUsphere", "arXiv") is still useful context.
+        fields.append(("note", journal))
     if year:
         fields.append(("year", year))
     if volume:
