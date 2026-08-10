@@ -20,6 +20,12 @@ For each work, `orcid2bib` builds a BibTeX entry from the ORCID record:
   fetch **author, journal, year, volume, number, pages,** and **keywords** — overriding the ORCID
   values with the DOI-sourced ones where available, since publisher metadata is usually more
   complete and accurate. Use `-n`/`--no-doi-lookup` to skip this and rely on ORCID data only.
+- **Pages** are normalized to BibTeX's `first--last` double-dash form (publisher metadata often
+  uses a single hyphen or an en/em dash instead, which most BibTeX-aware tools — including Sphinx's
+  `sphinxcontrib-bibtex` — don't recognize as a range).
+- Each entry's provenance note (`Retrieved via ORCID API put-code ...`) is stored in a `comment`
+  field rather than `note`, since `note` is rendered by most BibTeX styles and `comment` generally
+  isn't — keeping it out of the way of the actual reference text.
 
 ## Install
 
@@ -226,3 +232,4 @@ Clemens Drüe (druee@uni-trier.de)
 ## Acknowledgments
 
 Developed with the assistance of Claude Sonnet 5 (Anthropic).
+

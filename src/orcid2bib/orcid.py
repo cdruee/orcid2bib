@@ -280,6 +280,24 @@ def _extract_orcid_year(work_data):
     return ""
 
 
+def _format_page_range(pages):
+    """Normalizes a page range to BibTeX's 'first--last' (double-dash) form.
+
+    Sphinx's 'sphinxcontrib-bibtex' (and other strict BibTeX consumers) only
+    recognize a page *range* when it's separated by a double dash; a single
+    hyphen, en dash, or em dash (as DOI/Crossref metadata often uses) isn't
+    picked up. A single page number (no range) is left untouched.
+    """
+    pages = _clean(pages)
+    if not pages:
+        return pages
+    match = re.match(r"^(\S+?)\s*[-\u2010-\u2015]+\s*(\S+)$", pages)
+    if match:
+        first, last = match.group(1), match.group(2)
+        return f"{first}--{last}"
+    return pages
+
+
 def _guess_entry_type(work_data):
     work_type = work_data.get("type") or ""
     return _BIBTEX_TYPE_MAP.get(work_type, "misc")
@@ -332,7 +350,7 @@ def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True, verbo
             if meta.get("issue"):
                 number = _clean(meta["issue"])
             if meta.get("page"):
-                pages = _clean(meta["page"])
+                pages = _format_page_range(_clean(meta["page"]))
 
             subject = meta.get("subject")
             if subject:
@@ -358,7 +376,7 @@ def build_bibtex_entry(orcid_id, put_code, work_data, use_doi_lookup=True, verbo
         fields.append(("doi", doi))
     if keywords:
         fields.append(("keywords", keywords))
-    fields.append(("note", f"Retrieved via ORCID API put-code {put_code}"))
+    fields.append(("comment", f"Retrieved via ORCID API put-code {put_code}"))
 
     key = f"orcid_{orcid_id}_{put_code}"
     body = ",\n".join(f"  {name} = {{{value}}}" for name, value in fields)

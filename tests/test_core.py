@@ -30,6 +30,23 @@ def test_guess_entry_type(work_type, expected):
     assert core._guess_entry_type({"type": work_type}) == expected
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("100-110", "100--110"),
+        ("100--110", "100--110"),  # already correct, left alone
+        ("100\u2013110", "100--110"),  # en dash, e.g. from Crossref
+        ("100\u2014110", "100--110"),  # em dash
+        ("100 - 110", "100--110"),  # spaced hyphen
+        ("e12345", "e12345"),  # article number, not a range -> untouched
+        ("", ""),
+        (None, ""),
+    ],
+)
+def test_format_page_range(raw, expected):
+    assert core._format_page_range(raw) == expected
+
+
 # --------------------------------------------------------------------------
 # build_bibtex_entry
 # --------------------------------------------------------------------------
@@ -58,7 +75,7 @@ def test_build_bibtex_entry_journal_article_no_doi_lookup():
     assert "journal = {ORCID Journal Name}" in entry
     assert "year = {2019}" in entry
     assert "doi = {10.1234/example.doi}" in entry
-    assert "note = {Retrieved via ORCID API put-code 111}" in entry
+    assert "comment = {Retrieved via ORCID API put-code 111}" in entry
 
 
 def test_build_bibtex_entry_doi_lookup_overrides_fields(monkeypatch):
@@ -90,7 +107,7 @@ def test_build_bibtex_entry_doi_lookup_overrides_fields(monkeypatch):
     assert "year = {2020}" in entry
     assert "volume = {12}" in entry
     assert "number = {4}" in entry
-    assert "pages = {100-110}" in entry
+    assert "pages = {100--110}" in entry
     assert "keywords = {machine learning, nlp}" in entry
 
 
