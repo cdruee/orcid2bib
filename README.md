@@ -4,6 +4,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-cdruee%2Forcid2bib-181717?logo=github)](https://github.com/cdruee/orcid2bib)
 
 Fetch all public works from an ORCID profile and compile them into a single BibTeX (`.bib`) file.
+This package also ships [`bibdiff`](#bibdiff), a tool for comparing BibTeX files.
 
 Repository: [github.com/cdruee/orcid2bib](https://github.com/cdruee/orcid2bib)
 
@@ -193,6 +194,23 @@ bibdiff mylibrary.bib exported_from_zotero.bib -v -d
 
 Bug reports and pull requests are welcome at
 [github.com/cdruee/orcid2bib/issues](https://github.com/cdruee/orcid2bib/issues).
+
+### Versioning
+
+The package version is derived automatically from git tags via
+[`setuptools_scm`](https://setuptools-scm.readthedocs.io/) — there's no version number to edit by
+hand. To release a new version, tag the commit:
+
+```bash
+git tag v1.2.3
+git push --tags
+```
+
+and the next build/install picks up `1.2.3` automatically (`orcid2bib --version` / `bibdiff
+--version` / `orcid2bib.__version__` all reflect it). Between tags, or with uncommitted changes,
+the version includes a `.devN+g<hash>` (and `.d<date>` if the tree is dirty) suffix so it's always
+clear a build didn't come from a clean tagged commit. Building from a source tree with no git
+history at all (e.g. a bare zip export) falls back to `0.0.0` rather than failing.
 
 ## License
 

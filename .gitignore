@@ -7,3 +7,4 @@ dist/
 .venv/
 *.bib
 .pytest_cache/
+src/orcid2bib/_version.py

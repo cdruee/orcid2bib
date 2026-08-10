@@ -20,6 +20,7 @@ as blank instead of listing it separately).
 import argparse
 import sys
 
+from . import __version__
 from ._color import paint
 from ._compare import diff_entry_fields
 from ._matching import (
@@ -40,7 +41,8 @@ def build_parser():
         description=(
             "Compare two BibTeX files: validate syntax, find duplicates within each "
             "file, match corresponding entries across files, and diff their fields. "
-            "Normal output is just the differences, as with diff(1)."
+            "Normal output is just the differences, as with diff(1). "
+            "(Ships as part of the orcid2bib package.)"
         ),
     )
     parser.add_argument("first", help="First .bib file")
@@ -119,7 +121,7 @@ def build_parser():
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.2.0",
+        version=f"%(prog)s {__version__}",
     )
     return parser
 

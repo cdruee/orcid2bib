@@ -5,13 +5,15 @@
 import argparse
 import sys
 
+from . import __version__
 from .orcid import run
 
 
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="orcid2bib",
-        description="Fetch all public works from an ORCID profile and compile them into a BibTeX file.",
+        description="Fetch all public works from an ORCID profile and compile them into a BibTeX file. "
+                    "This package also ships a bibdiff tool for comparing BibTeX files.",
     )
     parser.add_argument(
         "orcid_id",
@@ -50,7 +52,7 @@ def build_parser():
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.2.0",
+        version=f"%(prog)s {__version__}",
     )
     return parser
 

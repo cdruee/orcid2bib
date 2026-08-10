@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "orcid2bib"
-version = "0.2.0"
-description = "Fetch all public works from an ORCID profile and compile them into a BibTeX file."
+dynamic = ["version"]
+description = "Fetch all public works from an ORCID profile and compile them into a BibTeX file. Also ships bibdiff, a tool for comparing BibTeX files."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
@@ -40,5 +40,17 @@ Homepage = "https://github.com/cdruee/orcid2bib"
 Repository = "https://github.com/cdruee/orcid2bib"
 Issues = "https://github.com/cdruee/orcid2bib/issues"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/orcid2bib"]
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Derives the version from the latest git tag (e.g. "v1.2.3" -> "1.2.3").
+# Writes the resolved version into this file at build time; it's generated,
+# not committed (see .gitignore).
+write_to = "src/orcid2bib/_version.py"
+# Lets the package still build from a source tree with no git history/tags
+# (e.g. a plain zip export) instead of hard-failing.
+fallback_version = "0.0.0"
