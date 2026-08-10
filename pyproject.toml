@@ -14,10 +14,14 @@ authors = [
 ]
 keywords = ["orcid", "bibtex", "bibliography", "citations", "research"]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Topic :: Text Processing :: Markup :: LaTeX",
 ]
 dependencies = [
@@ -39,6 +43,7 @@ bibdiff = "orcid2bib.bibdiff:main"
 Homepage = "https://github.com/cdruee/orcid2bib"
 Repository = "https://github.com/cdruee/orcid2bib"
 Issues = "https://github.com/cdruee/orcid2bib/issues"
+Changelog = "https://github.com/cdruee/orcid2bib/releases"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

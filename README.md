@@ -1,5 +1,7 @@
 # orcid2bib
 
+[![PyPI](https://img.shields.io/pypi/v/orcid2bib.svg)](https://pypi.org/project/orcid2bib/)
+[![Python versions](https://img.shields.io/pypi/pyversions/orcid2bib.svg)](https://pypi.org/project/orcid2bib/)
 [![License: EUPL-1.2](https://img.shields.io/badge/License-EUPL--1.2-blue.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-cdruee%2Forcid2bib-181717?logo=github)](https://github.com/cdruee/orcid2bib)
 
@@ -29,21 +31,29 @@ For each work, `orcid2bib` builds a BibTeX entry from the ORCID record:
 
 ## Install
 
-Clone the repository and install it (editable install is recommended during development):
-
 ```bash
-git clone https://github.com/cdruee/orcid2bib.git
-cd orcid2bib
-pip install -e .
+pip install orcid2bib
 ```
 
-(or `pip install -e ".[dev]"` to include test dependencies)
+### Development / latest version
 
-You can also install directly from GitHub without cloning first:
+To install the unreleased development version directly from GitHub instead:
 
 ```bash
 pip install "git+https://github.com/cdruee/orcid2bib.git"
 ```
+
+Or clone and install it as an editable install (recommended if you're working on the code):
+
+```bash
+git clone https://github.com/cdruee/orcid2bib.git
+cd orcid2bib
+pip install -e ".[dev]"
+```
+
+Prebuilt sdist/wheel files for each release are also attached to the corresponding
+[GitHub Release](https://github.com/cdruee/orcid2bib/releases), if you'd rather install one of
+those directly instead of going through the PyPI index.
 
 ## Usage
 
