@@ -14,8 +14,8 @@ STYLES = ("diff", "context", "side-by-side")
 
 def entry_to_lines(entry):
     """Serializes a BibTeX entry to a stable, sorted-field text form for diffing."""
-    key = entry.get("ID", "")
-    entry_type = entry.get("ENTRYTYPE", "misc")
+    key = entry.get("ID") or "(none)"
+    entry_type = entry.get("ENTRYTYPE") or "(none)"
     lines = [f"@{entry_type}{{{key},"]
     for name in sorted(k for k in entry if k not in ("ID", "ENTRYTYPE")):
         lines.append(f"  {name} = {{{entry[name]}}},")

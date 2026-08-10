@@ -9,6 +9,12 @@ Procedure:
   b) find likely duplicate entries within each file,
   c) match corresponding entries across the two files,
   d) for each matched pair, diff every field and report the result.
+
+Modeled on the classic `diff` tool's conventions: normal output is just the
+differences (no section headers/counts -- those are verbose-only), -q/--brief
+mirrors `diff -q`, -s/--report-identical-files mirrors GNU diff's flag of the
+same name, and -N/--new-file mirrors `diff -N` (treat a missing counterpart
+as blank instead of listing it separately).
 """
 
 import argparse
@@ -22,7 +28,9 @@ from ._matching import (
     match_entries,
 )
 from ._parser import BibSyntaxError, load_bib_file
-from ._report import STYLES, render_diff
+from ._report import render_diff
+
+_EMPTY_ENTRY = {"ID": "", "ENTRYTYPE": ""}
 
 
 def build_parser():
@@ -30,16 +38,45 @@ def build_parser():
         prog="bibdiff",
         description=(
             "Compare two BibTeX files: validate syntax, find duplicates within each "
-            "file, match corresponding entries across files, and diff their fields."
+            "file, match corresponding entries across files, and diff their fields. "
+            "Normal output is just the differences, as with diff(1)."
         ),
     )
     parser.add_argument("first", help="First .bib file")
     parser.add_argument("second", help="Second .bib file")
+
+    style_group = parser.add_mutually_exclusive_group()
+    style_group.add_argument(
+        "-c", "--context",
+        action="store_true",
+        help="Show field differences in context-diff style (default: unified diff)",
+    )
+    style_group.add_argument(
+        "-y", "--side-by-side",
+        action="store_true",
+        help="Show field differences side by side (default: unified diff)",
+    )
+
     parser.add_argument(
-        "--style",
-        choices=STYLES,
-        default="diff",
-        help="Output style for field-level differences (default: diff)",
+        "-q", "--brief",
+        action="store_true",
+        help='Report only whether entries differ, one line per pair: '
+             '"KEY1 KEY2 differ", or "KEY1 KEY2 renamed" if only the citation '
+             'key differs. With -s, also reports "KEY1 KEY2 are identical".',
+    )
+    parser.add_argument(
+        "-s", "--report-identical-files",
+        action="store_true",
+        dest="report_identical",
+        help="Also report matched pairs with no differences at all "
+             "(same citation key, all fields identical). Omitted by default.",
+    )
+    parser.add_argument(
+        "-N", "--new-file",
+        action="store_true",
+        dest="new_file",
+        help="Treat an entry missing on one side as blank there and diff it "
+             "against the blank, instead of listing it under 'Only in ...'.",
     )
     parser.add_argument(
         "--match-threshold",
@@ -63,7 +100,8 @@ def build_parser():
     parser.add_argument(
         "-v", "--verbose",
         action="store_true",
-        help="Print progress details (files parsed, entry counts, matching progress)",
+        help="Also print progress details, possible-duplicate listings, section "
+             "headers/counts, and a final summary. Normal output has none of these.",
     )
     parser.add_argument(
         "-d", "--debug",
@@ -74,9 +112,17 @@ def build_parser():
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.1.0",
+        version="%(prog)s 0.2.0",
     )
     return parser
+
+
+def _resolve_style(args):
+    if args.side_by_side:
+        return "side-by-side"
+    if args.context:
+        return "context"
+    return "diff"
 
 
 def _vprint(verbose, msg, stream):
@@ -99,7 +145,55 @@ def _make_debug_sink(label, args, stream):
 
 
 def _entry_label(filename, entry):
-    return f"{filename}: {entry.get('ID', '?')}"
+    return f"{filename}: {entry.get('ID') or '?'}"
+
+
+def _classify_pair(key_a, key_b, rows):
+    """Returns 'differ', 'renamed' (only the citekey differs), or 'identical'."""
+    if any(row[3] != "same" for row in rows):
+        return "differ"
+    if key_a != key_b:
+        return "renamed"
+    return "identical"
+
+
+def _print_pair(entry_a, entry_b, result, label_a, label_b, args, stream):
+    """Prints one compared pair per the chosen style/brief/report-identical settings.
+
+    Returns (printed, differs): whether anything was printed, and whether the
+    pair counts as a difference (used for the process exit code).
+    """
+    rows = diff_entry_fields(entry_a, entry_b)
+    key_a = entry_a.get("ID") or "(none)"
+    key_b = entry_b.get("ID") or "(none)"
+    status = _classify_pair(key_a, key_b, rows)
+    differs = status != "identical"
+
+    if status == "identical" and not args.report_identical:
+        return False, differs
+
+    if args.brief:
+        if status == "differ":
+            print(f"{key_a} {key_b} differ", file=stream)
+        elif status == "renamed":
+            print(f"{key_a} {key_b} renamed", file=stream)
+        else:
+            print(f"{key_a} {key_b} are identical", file=stream)
+        return True, differs
+
+    score_note = f"(score={result.total:.2f}, via {result.tier})" if result is not None else "(no entry on the other side)"
+    print(f"\n--- {label_a}  <->  {label_b}  {score_note} ---", file=stream)
+    if args.debug and result is not None:
+        parts = ", ".join(f"{name}={score:.2f}(w={weight:.2f})" for name, (score, weight) in result.breakdown.items())
+        print(f"    [d] breakdown: {parts or '(identifier match, no component breakdown)'}", file=stream)
+
+    if status != "differ":
+        note = "entries are identical" if status == "identical" else "citation key differs; all fields identical"
+        print(f"  ({note})", file=stream)
+        return True, differs
+
+    print(render_diff(label_a, entry_a, label_b, entry_b, style=args.style), file=stream)
+    return True, differs
 
 
 def _report_duplicates(filename, entries, groups, stream):
@@ -112,30 +206,23 @@ def _report_duplicates(filename, entries, groups, stream):
         print(f"  {', '.join(keys)}", file=stream)
 
 
-def _report_matched(title, pairs, entries_a, entries_b, args, first, second, stream):
-    print(f"\n=== {title} ({len(pairs)}) ===", file=stream)
-    for i, j, result in pairs:
-        entry_a, entry_b = entries_a[i], entries_b[j]
-        label_a = _entry_label(first, entry_a)
-        label_b = _entry_label(second, entry_b)
-        print(f"\n--- {label_a}  <->  {label_b}  (score={result.total:.2f}, via {result.tier}) ---", file=stream)
-        if args.debug:
-            parts = ", ".join(f"{name}={score:.2f}(w={weight:.2f})" for name, (score, weight) in result.breakdown.items())
-            print(f"    [d] breakdown: {parts or '(identifier match, no component breakdown)'}", file=stream)
-        if args.style == "side-by-side":
-            rows = diff_entry_fields(entry_a, entry_b)
-            changed = sum(1 for row in rows if row[3] != "same")
-            if changed == 0:
-                print("  (all fields identical)", file=stream)
-                continue
-        print(render_diff(label_a, entry_a, label_b, entry_b, style=args.style), file=stream)
+def _report_unmatched(filename, entries, indices, args, stream):
+    for i in indices:
+        entry = entries[i]
+        key = entry.get("ID", "?")
+        if args.brief:
+            print(f"Only in {filename}: {key}", file=stream)
+        else:
+            print(f"  {key}: {entry.get('title', '')}", file=stream)
 
 
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    args.style = _resolve_style(args)
 
     stream = open(args.output, "w", encoding="utf-8") if args.output else sys.stdout
+    any_diff = False
     try:
         try:
             entries_a = load_bib_file(args.first)
@@ -155,9 +242,10 @@ def main(argv=None):
             entries_b, threshold=args.match_threshold,
             debug_sink=_make_debug_sink("dup-B", args, stream),
         )
-        _report_duplicates(args.first, entries_a, dups_a, stream)
-        print(file=stream)
-        _report_duplicates(args.second, entries_b, dups_b, stream)
+        if args.verbose:
+            _report_duplicates(args.first, entries_a, dups_a, stream)
+            print(file=stream)
+            _report_duplicates(args.second, entries_b, dups_b, stream)
 
         _vprint(args.verbose, "Matching entries across files...", stream)
         matches, possibles, unmatched_a, unmatched_b = match_entries(
@@ -167,36 +255,61 @@ def main(argv=None):
             debug_sink=_make_debug_sink("match", args, stream),
         )
 
-        _report_matched("Matched entries", matches, entries_a, entries_b, args, args.first, args.second, stream)
+        if args.verbose:
+            print(f"\n=== Matched entries ({len(matches)}) ===", file=stream)
+        for i, j, result in matches:
+            entry_a, entry_b = entries_a[i], entries_b[j]
+            label_a, label_b = _entry_label(args.first, entry_a), _entry_label(args.second, entry_b)
+            _, differs = _print_pair(entry_a, entry_b, result, label_a, label_b, args, stream)
+            any_diff = any_diff or differs
+
         if possibles:
-            _report_matched(
-                "Possible matches needing review", possibles,
-                entries_a, entries_b, args, args.first, args.second, stream,
+            if args.verbose:
+                print(f"\n=== Possible matches needing review ({len(possibles)}) ===", file=stream)
+            for i, j, result in possibles:
+                entry_a, entry_b = entries_a[i], entries_b[j]
+                label_a, label_b = _entry_label(args.first, entry_a), _entry_label(args.second, entry_b)
+                _print_pair(entry_a, entry_b, result, label_a, label_b, args, stream)
+            any_diff = True
+
+        if unmatched_a or unmatched_b:
+            any_diff = True
+
+        if args.new_file:
+            for i in unmatched_a:
+                entry_a = entries_a[i]
+                label_a = _entry_label(args.first, entry_a)
+                label_b = f"{args.second}: (no entry)"
+                _print_pair(entry_a, _EMPTY_ENTRY, None, label_a, label_b, args, stream)
+            for j in unmatched_b:
+                entry_b = entries_b[j]
+                label_a = f"{args.first}: (no entry)"
+                label_b = _entry_label(args.second, entry_b)
+                _print_pair(_EMPTY_ENTRY, entry_b, None, label_a, label_b, args, stream)
+        else:
+            if args.verbose:
+                print(f"\n=== Only in {args.first} ({len(unmatched_a)}) ===", file=stream)
+            _report_unmatched(args.first, entries_a, unmatched_a, args, stream)
+            if args.verbose:
+                print(f"\n=== Only in {args.second} ({len(unmatched_b)}) ===", file=stream)
+            _report_unmatched(args.second, entries_b, unmatched_b, args, stream)
+
+        if args.verbose:
+            dup_count_a = sum(len(g) for g in dups_a)
+            dup_count_b = sum(len(g) for g in dups_b)
+            print("\n=== Summary ===", file=stream)
+            print(f"  {args.first}: {len(entries_a)} entries, {dup_count_a} in {len(dups_a)} duplicate group(s)", file=stream)
+            print(f"  {args.second}: {len(entries_b)} entries, {dup_count_b} in {len(dups_b)} duplicate group(s)", file=stream)
+            print(
+                f"  Matched: {len(matches)}  Possible: {len(possibles)}  "
+                f"Only in {args.first}: {len(unmatched_a)}  Only in {args.second}: {len(unmatched_b)}",
+                file=stream,
             )
-
-        print(f"\n=== Only in {args.first} ({len(unmatched_a)}) ===", file=stream)
-        for i in unmatched_a:
-            entry = entries_a[i]
-            print(f"  {entry.get('ID', '?')}: {entry.get('title', '')}", file=stream)
-
-        print(f"\n=== Only in {args.second} ({len(unmatched_b)}) ===", file=stream)
-        for j in unmatched_b:
-            entry = entries_b[j]
-            print(f"  {entry.get('ID', '?')}: {entry.get('title', '')}", file=stream)
-
-        dup_count_a = sum(len(g) for g in dups_a)
-        dup_count_b = sum(len(g) for g in dups_b)
-        print("\n=== Summary ===", file=stream)
-        print(f"  {args.first}: {len(entries_a)} entries, {dup_count_a} in {len(dups_a)} duplicate group(s)", file=stream)
-        print(f"  {args.second}: {len(entries_b)} entries, {dup_count_b} in {len(dups_b)} duplicate group(s)", file=stream)
-        print(
-            f"  Matched: {len(matches)}  Possible: {len(possibles)}  "
-            f"Only in {args.first}: {len(unmatched_a)}  Only in {args.second}: {len(unmatched_b)}",
-            file=stream,
-        )
     finally:
         if args.output:
             stream.close()
+
+    sys.exit(1 if any_diff else 0)
 
 
 if __name__ == "__main__":
