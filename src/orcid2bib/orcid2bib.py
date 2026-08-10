@@ -5,7 +5,7 @@
 import argparse
 import sys
 
-from .core import run
+from .orcid import run
 
 
 def build_parser():

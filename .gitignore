@@ -6,3 +6,4 @@ build/
 dist/
 .venv/
 *.bib
+.pytest_cache/

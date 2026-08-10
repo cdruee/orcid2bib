@@ -4,7 +4,7 @@
 
 import pytest
 
-from orcid2bib import core
+from orcid2bib import orcid as core
 from conftest import make_response
 
 

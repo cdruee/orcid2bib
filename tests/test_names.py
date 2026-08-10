@@ -4,7 +4,7 @@
 
 import pytest
 
-from orcid2bib import core
+from orcid2bib import orcid as core
 
 
 @pytest.mark.parametrize(
@@ -58,7 +58,7 @@ def test_split_combined_credit_name_detects_concatenated_authors():
         "Smith, Jr., John",  # single name w/ suffix, no "and" -> not combined
         "Smith, Jane",  # plain single name
         "Sabine Undorf",  # no comma at all
-        "Kahlenborn, W., Porst, L.",  # only 2 tokens after split by comma... actually 4, but no "and"
+        "Kahlenborn, W., Porst, L.",  # no "and" present
     ],
 )
 def test_split_combined_credit_name_leaves_single_names_alone(name):

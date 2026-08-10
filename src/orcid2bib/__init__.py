@@ -4,7 +4,7 @@
 
 """orcid2bib: fetch public works from an ORCID profile and compile them to BibTeX."""
 
-from .core import (
+from .orcid import (
     build_bibtex_entry,
     fetch_work_details,
     get_doi_metadata,

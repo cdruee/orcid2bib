@@ -4,7 +4,7 @@
 
 import pytest
 
-from orcid2bib import cli
+from orcid2bib import orcid2bib as cli
 
 
 def test_build_parser_requires_orcid_id():

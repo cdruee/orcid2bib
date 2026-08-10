@@ -92,6 +92,71 @@ from orcid2bib import run
 run("0000-0002-0103-4275", output_filename="my_publications.bib")
 ```
 
+## bibdiff
+
+`bibdiff` compares two BibTeX files: it validates their syntax, flags likely duplicate entries
+within each file, matches corresponding entries across the two files, and shows a field-by-field
+diff for each matched pair.
+
+```bash
+bibdiff mylibrary.bib exported_from_zotero.bib
+```
+
+**How matching works**, in order of confidence:
+
+1. Identical citation key.
+2. Identical DOI (or, failing that, ISBN), normalized (case, `https://doi.org/` prefix, hyphens).
+3. A weighted, typo- and abbreviation-tolerant score combining whichever of first author, year,
+   title, and journal/booktitle/pages are available. This also tolerates first-name initials
+   (`J. Smith` vs `John Smith`) and abbreviated venue names (`J. Am. Chem. Soc.` vs `Journal of
+   the American Chemical Society`).
+
+The same scoring is used to detect probable duplicates *within* a single file.
+
+Options:
+
+```
+usage: bibdiff [-h] [--style {diff,context,side-by-side}]
+               [--match-threshold SCORE] [--possible-threshold SCORE]
+               [-o FILE] [-v] [-d] [--version]
+               first second
+
+positional arguments:
+  first                 First .bib file
+  second                Second .bib file
+
+options:
+  -h, --help            show this help message and exit
+  --style {diff,context,side-by-side}
+                        Output style for field-level differences (default: diff)
+  --match-threshold SCORE
+                        Minimum score (0-1) to treat two entries as a confirmed match
+                        (default: 0.75)
+  --possible-threshold SCORE
+                        Minimum score (0-1) to flag two entries as a possible match
+                        needing review (default: 0.55)
+  -o FILE, --output FILE
+                        Write the report to a file instead of stdout
+  -v, --verbose         Print progress details (files parsed, entry counts, matching
+                        progress)
+  -d, --debug           Also print the score breakdown (per-component scores and
+                        weights) for every match, possible match, and duplicate pair
+                        found
+  --version             show program's version number and exit
+```
+
+Example with a side-by-side field comparison:
+
+```bash
+bibdiff mylibrary.bib exported_from_zotero.bib --style side-by-side
+```
+
+Example seeing exactly how each score was computed:
+
+```bash
+bibdiff mylibrary.bib exported_from_zotero.bib -d
+```
+
 ## Contributing
 
 Bug reports and pull requests are welcome at
