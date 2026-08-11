@@ -47,6 +47,99 @@ jobs:
           name: python-package-distributions
           path: dist/
 
+  build-deb:
+    name: Build .deb package
+    needs: build
+    # Explicitly pinned (rather than ubuntu-latest, which lags behind a new
+    # LTS by a few months during GitHub's gradual rollout) to the current
+    # latest Ubuntu LTS. Bump this at the next LTS release.
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        # Shallow checkout is fine here -- this job only needs README.md
+        # and LICENSE from the tree, not git history (the version comes
+        # from the already-built wheel's filename, from the "build" job).
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Determine version
+        id: version
+        run: |
+          version=$(ls dist/*.whl | sed -E 's/.*orcid2bib-([^-]+)-.*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble package tree
+        run: |
+          set -e
+          pkgroot=pkgroot
+          libdir="$pkgroot/usr/lib/python3/dist-packages"
+          bindir="$pkgroot/usr/bin"
+          docdir="$pkgroot/usr/share/doc/orcid2bib"
+          mkdir -p "$libdir" "$bindir" "$docdir" "$pkgroot/DEBIAN"
+
+          # Install only orcid2bib's own code (--no-deps): its runtime
+          # dependencies (requests, bibtexparser) are declared as apt
+          # Depends below instead of vendored. apt/dpkg already resolves
+          # requests' own further dependency on a compiled string-encoding
+          # detector correctly for whatever architecture the target
+          # machine is. bibtexparser is likewise left to the distro:
+          # orcid2bib only uses BibTexParser(common_strings=True) and
+          # .ignore_nonstandard_types, which have had an identical
+          # signature and behavior since bibtexparser 1.0 -- so even
+          # Jammy's comparatively old python3-bibtexparser (1.1.0)
+          # satisfies pyproject.toml's `bibtexparser>=1.1,<2` just fine.
+          # No reason to vendor either dependency by hand.
+          python3 -m pip install --break-system-packages --no-deps \
+            --target "$libdir" dist/*.whl
+
+          # pip already generated correct console-script launchers (with
+          # the right shebang and a direct import, since dist-packages is
+          # on the default sys.path) under $libdir/bin/ -- just relocate
+          # them to the standard /usr/bin.
+          mv "$libdir/bin/"* "$bindir/"
+          rmdir "$libdir/bin"
+
+          cp README.md "$docdir/" 2>/dev/null || true
+          cp LICENSE "$docdir/copyright" 2>/dev/null || true
+
+          version="${{ steps.version.outputs.version }}"
+          size=$(du -sk "$pkgroot/usr" | cut -f1)
+          cat > "$pkgroot/DEBIAN/control" <<EOF
+          Package: orcid2bib
+          Version: $version
+          Section: python
+          Priority: optional
+          Architecture: all
+          Installed-Size: $size
+          Depends: python3 (>= 3.9), python3-requests, python3-bibtexparser
+          Maintainer: Clemens Drüe <druee@uni-trier.de>
+          Homepage: https://github.com/cdruee/orcid2bib
+          Description: Fetch ORCID works into BibTeX; also ships bibdiff
+           Fetch all public works from an ORCID profile and compile them into a
+           single BibTeX (.bib) file. Also ships bibdiff, a tool for comparing
+           BibTeX files.
+          EOF
+
+      - name: Build the .deb
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          dpkg-deb --build --root-owner-group "pkgroot" "orcid2bib_${version}_all.deb"
+
+      - name: Sanity-check the built package
+        run: |
+          dpkg-deb --info ./*.deb
+          dpkg-deb --contents ./*.deb
+
+      - name: Upload .deb as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-deb-package
+          path: "*.deb"
+
   publish:
     name: Upload release to PyPI
     needs: build
@@ -68,7 +161,7 @@ jobs:
 
   attach-release-assets:
     name: Attach distributions to the GitHub Release
-    needs: build
+    needs: [build, build-deb]
     runs-on: ubuntu-latest
     permissions:
       contents: write  # needed to upload assets to the release
@@ -79,7 +172,13 @@ jobs:
           name: python-package-distributions
           path: dist/
 
-      - name: Upload sdist/wheel as release assets
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: python-deb-package
+          path: dist/
+
+      - name: Upload sdist/wheel/deb as release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

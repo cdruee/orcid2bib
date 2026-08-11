@@ -26,7 +26,7 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.25",
-    "bibtexparser>=1.4,<2",
+    "bibtexparser>=1.1,<2",
 ]
 
 [project.optional-dependencies]
