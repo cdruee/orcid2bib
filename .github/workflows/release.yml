@@ -78,7 +78,7 @@ jobs:
           pkgroot=pkgroot
           libdir="$pkgroot/usr/lib/python3/dist-packages"
           bindir="$pkgroot/usr/bin"
-          docdir="$pkgroot/usr/share/doc/orcid2bib"
+          docdir="$pkgroot/usr/share/doc/python3-orcid2bib"
           mkdir -p "$libdir" "$bindir" "$docdir" "$pkgroot/DEBIAN"
 
           # Install only orcid2bib's own code (--no-deps): its runtime
@@ -109,7 +109,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           size=$(du -sk "$pkgroot/usr" | cut -f1)
           cat > "$pkgroot/DEBIAN/control" <<EOF
-          Package: orcid2bib
+          Package: python3-orcid2bib
           Version: $version
           Section: python
           Priority: optional
@@ -127,7 +127,7 @@ jobs:
       - name: Build the .deb
         run: |
           version="${{ steps.version.outputs.version }}"
-          dpkg-deb --build --root-owner-group "pkgroot" "orcid2bib_${version}_all.deb"
+          dpkg-deb --build --root-owner-group "pkgroot" "python3-orcid2bib_${version}_all.deb"
 
       - name: Sanity-check the built package
         run: |
